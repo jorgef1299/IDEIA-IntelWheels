@@ -1,0 +1,11 @@
+/home/jorge/ros2_ws/src/pitfall_detector/cmake-build-debug/CMakeFiles/install/strip.dir
+/home/jorge/ros2_ws/src/pitfall_detector/cmake-build-debug/CMakeFiles/list_install_components.dir
+/home/jorge/ros2_ws/src/pitfall_detector/cmake-build-debug/CMakeFiles/zed2_pub.dir
+/home/jorge/ros2_ws/src/pitfall_detector/cmake-build-debug/CMakeFiles/install.dir
+/home/jorge/ros2_ws/src/pitfall_detector/cmake-build-debug/CMakeFiles/pitfall_detector_uninstall.dir
+/home/jorge/ros2_ws/src/pitfall_detector/cmake-build-debug/CMakeFiles/Depth_Subscriber.dir
+/home/jorge/ros2_ws/src/pitfall_detector/cmake-build-debug/CMakeFiles/install/local.dir
+/home/jorge/ros2_ws/src/pitfall_detector/cmake-build-debug/CMakeFiles/uninstall.dir
+/home/jorge/ros2_ws/src/pitfall_detector/cmake-build-debug/CMakeFiles/test.dir
+/home/jorge/ros2_ws/src/pitfall_detector/cmake-build-debug/CMakeFiles/edit_cache.dir
+/home/jorge/ros2_ws/src/pitfall_detector/cmake-build-debug/CMakeFiles/rebuild_cache.dir

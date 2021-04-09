@@ -1,0 +1,12 @@
+zed2_camera:
+  ros__parameters:
+    mode: "ULTRA" # PERFORMANCE or ULTRA or QUALITY
+    unit: "MILLIMETER" # MILLIMETER or CENTIMETER or FOOT or INCH
+    minimum_distance: 150.0
+    max_range: 3000.0
+    topic_to_publish: "/depth_map"
+
+depth_subscriber:
+  ros__parameters:
+    topic_to_subscribe: "/depth_map"
+    show_image: true
