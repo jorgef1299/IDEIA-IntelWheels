@@ -56,6 +56,7 @@ private:
     float FSensor_pitch;
     float FSensor_yaw;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr FPublisher;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr FPublisher_ground;
 };
 
 struct Point {

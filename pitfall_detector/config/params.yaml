@@ -1,6 +1,6 @@
 zed2_camera:
   ros__parameters:
-    mode: "PERFORMANCE" # PERFORMANCE or ULTRA or QUALITY
+    mode: "ULTRA" # PERFORMANCE or ULTRA or QUALITY
     unit: "MILLIMETER" # MILLIMETER or CENTIMETER or FOOT or INCH
     minimum_distance: 400.0
     max_range: 5000.0

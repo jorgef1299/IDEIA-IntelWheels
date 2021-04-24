@@ -28,6 +28,7 @@ DepthSubscriber::DepthSubscriber() : Node("depth_subscriber"), FBuffer(this->get
     FSensor_height = (float)this->get_parameter("sensor_height").as_double();
 
     FPublisher = create_publisher<sensor_msgs::msg::PointCloud2>("point_cloud_filtered", 10);
+    FPublisher_ground = create_publisher<sensor_msgs::msg::PointCloud2>("point_cloud_ground", 10);
 }
 
 DepthSubscriber::~DepthSubscriber()
@@ -52,8 +53,8 @@ void DepthSubscriber::PointCloudCallback(const sensor_msgs::msg::PointCloud2::Sh
     estimatedGround.c = abc.z;
     estimatedGround.d = -FSensor_height * std::sqrt(estimatedGround.a * estimatedGround.a + estimatedGround.b * estimatedGround.b + estimatedGround.c * estimatedGround.c);
 
-    printf("%f %f %f %f\n", estimatedGround.a, estimatedGround.b, estimatedGround.c, estimatedGround.d);
-    printf("Vetores: 1: %f %f %f\t 2: %f %f %f\n", v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
+    //printf("%f %f %f %f\n", estimatedGround.a, estimatedGround.b, estimatedGround.c, estimatedGround.d);
+    //printf("Vetores: 1: %f %f %f\t 2: %f %f %f\n", v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
 
     // TODO: DELETE
     int count = 0;
@@ -112,9 +113,7 @@ void DepthSubscriber::PointCloudCallback(const sensor_msgs::msg::PointCloud2::Sh
         }
     }
 
-
-
-
+    // TODO: Delete
     std::vector<sensor_msgs::msg::PointField> fields;
     auto field = sensor_msgs::msg::PointField();
     field.name = "x";
@@ -151,105 +150,112 @@ void DepthSubscriber::PointCloudCallback(const sensor_msgs::msg::PointCloud2::Sh
     msg_pc2.width = count;
     if(count > 0)
         FPublisher->publish(msg_pc2);
-}
-
-void DepthSubscriber::depthCallback(const sensor_msgs::msg::Image::SharedPtr msg)
-{
-    /*RCLCPP_INFO(get_logger(), "Received image: %s", msg->header.frame_id.c_str());
-    cv::Mat depth_image(msg->height, msg->width, CV_32FC1, const_cast<unsigned char *>(msg->data.data()), msg->step);
-    if(Node::get_parameter("show_image").as_bool()) {
-        this->showDepthMap(depth_image, msg->width, msg->height);
-        last_state_show = 1;
-    }
-
-    else if(last_state_show == 1) {
-        cv::destroyAllWindows();
-        last_state_show = 0;
-    }
-
-    // Get sensor pose
-
-    // Passthrough filter
-    std::vector<Point> pts3D(msg->width * msg->height);
-    for(auto i = 0; i < msg->width; i++) {
-        for(auto j = 0; j < msg->height; j++) {
-            //printf("AEH %d %d\n", i,j);
-            float depth = msg->data[i + msg->width * j];
-
-            // Check validity of depth information
-            if(!std::isfinite(depth) || depth > FMax_range) {
-                pts3D[i + msg->width * j] = Point(-1, -1, -1);
-                continue;
-            }
-
-            // Convert 2D pixel to 3D point
-            Point out_pt;
-            convertPixel2World(Point(i, j, depth), out_pt);
-            // Save point and range
-            pts3D[i + msg->width * j] = out_pt;
-        }
-    }
-
-    // Create Ground Plane
-    printf("Initial number of points: %ld\n", pts3D.size());
-    Plane ground_plane;
-    filterGroundPoints(pts3D, ground_plane, msg->width, msg->height);
-    printf("Number of points after filtering: %ld\n", ground_plane.points.size());
 
     Plane final_ground_plane;
-    RANSAC(ground_plane, final_ground_plane);
-    printf("Number of points in the best fitting plane: %ld\n", final_ground_plane.points.size());
+    RANSAC(estimatedGround, final_ground_plane);
+    //printf("Nº de pontos no plano do chão: %lu\n", final_ground_plane.points.size());
 
-    // Publish point cloud with the detected ground
-    auto msg_point_cloud = sensor_msgs::msg::PointCloud();
-    msg_point_cloud.header.frame_id = "world";
-    msg_point_cloud.header.stamp = Node::get_clock()->now();
-    auto channel_z = sensor_msgs::msg::ChannelFloat32();
-    channel_z.name = "Depth";
-    for(int i = 0; i < pts3D.size(); i++) {
-        auto point = geometry_msgs::msg::Point32();
-        point.x = pts3D[i].x;
-        point.y = pts3D[i].y;
-        point.z = pts3D[i].z;
-        msg_point_cloud.points.push_back(point);
-        channel_z.values.push_back(point.z);
-        //msg_point_cloud.channels[0].values[i] = final_ground_plane.points[i].z;
-    }
-    msg_point_cloud.channels.push_back(channel_z);
-    FGround_publisher->publish(msg_point_cloud);*/
-}
+    //TODO:Delete
+    auto msg_pc_ground = sensor_msgs::msg::PointCloud2();
+    std::vector<sensor_msgs::msg::PointField> fields_ground;
+    auto field_ground = sensor_msgs::msg::PointField();
+    field_ground.name = "x";
+    field_ground.datatype = 7;
+    field_ground.count = 1;
+    field_ground.offset = 0;
+    fields_ground.push_back(field_ground);
 
-void DepthSubscriber::showDepthMap(cv::Mat map, uint32_t width , uint32_t height)
-{
-    float max = 4000;
-    for(int i = 0; i < height; i++){
-        for(int j = 0; j < width; j++){
-            map.at<float>(i,j) = 1 - (map.at<float>(i,j) / max);
+    field_ground.name = "y";
+    field_ground.datatype = 7;
+    field_ground.count = 1;
+    field_ground.offset = 4;
+    fields_ground.push_back(field_ground);
+
+    field_ground.name = "z";
+    field_ground.datatype = 7;
+    field_ground.count = 1;
+    field_ground.offset = 8;
+    fields_ground.push_back(field_ground);
+
+    field_ground.name = "rgb";
+    field_ground.datatype = 7;
+    field_ground.count = 1;
+    field_ground.offset = 12;
+    fields_ground.push_back(field_ground);
+    uint32_t contador = final_ground_plane.points.size();
+    msg_pc_ground.header.frame_id = "map";
+    msg_pc_ground.height = 1;
+    msg_pc_ground.fields = fields_ground;
+    msg_pc_ground.is_bigendian = false;
+    msg_pc_ground.point_step = 16;
+    msg_pc_ground.is_dense = true;
+    msg_pc_ground.row_step = msg_pc_ground.point_step * contador;
+    msg_pc_ground.width = contador;
+
+    union Float xg, yg, zg;
+    for(int g = 0; g < contador; g++) {
+        xg.f = final_ground_plane.points[g].x;
+        yg.f = final_ground_plane.points[g].y;
+        zg.f = final_ground_plane.points[g].z;
+        for(int k = 0; k < 4; k++) {
+            msg_pc_ground.data.push_back(xg.c[k]);
         }
+        for(int k = 0; k < 4; k++) {
+            msg_pc_ground.data.push_back(yg.c[k]);
+        }
+        for(int k = 0; k < 4; k++) {
+            msg_pc_ground.data.push_back(zg.c[k]);
+        }
+        msg_pc_ground.data.push_back(final_ground_plane.points[g].b);
+        msg_pc_ground.data.push_back(final_ground_plane.points[g].g);
+        msg_pc_ground.data.push_back(final_ground_plane.points[g].r);
+        msg_pc_ground.data.push_back(final_ground_plane.points[g].a);
     }
-    cv::imshow("Depth map", map);
-    cv::waitKey(1);
-}
+    FPublisher_ground->publish(msg_pc_ground);
 
-void DepthSubscriber::convertPixel2World(const Point& in_pt, Point& out_pt)
-{
-    // Project 2D pixel into a 3D Point using the stereo depth information
-    float x_cam = (in_pt.x - Fcx) * (in_pt.z / Ffx);
-    float y_cam = (in_pt.y - Fcy) * (in_pt.z / Ffy);
-    float z_cam = in_pt.z;
-
-    // Compute input sensor - world axis transformation matrix
-   /* Pose transform(0, 0, FSensor_height, FSensor_roll, FSensor_pitch, 0);
-    std::array<float, 9> s2w_rot = {0, 0, 0, 0, 0, 0, 0, 0, 0};
-    transform.toRotMatrix(s2w_rot);
-
-    // Align sensor and world axis
-    out_pt.x = s2w_rot[0] * x_cam + s2w_rot[1] * y_cam + s2w_rot[2] * z_cam + transform.x;
-    out_pt.y = s2w_rot[3] * x_cam + s2w_rot[4] * y_cam + s2w_rot[5] * z_cam + transform.y;
-    out_pt.z = s2w_rot[6] * x_cam + s2w_rot[7] * y_cam + s2w_rot[8] * z_cam + transform.z;*/
-   out_pt.x = x_cam;
-   out_pt.y = y_cam;
-   out_pt.z = z_cam;
+    // Check if it is a danger situation
+    uint32_t num_danger_points = 0;
+    for(int i = 0; i < total_bytes - 15;) {
+        Point pt;
+        union Float value_x, value_y, value_z;
+        // Get x coordinate
+        value_x.c[0] = msg->data[i];
+        value_x.c[1] = msg->data[i + 1];
+        value_x.c[2] = msg->data[i + 2];
+        value_x.c[3] = msg->data[i + 3];
+        pt.x = value_x.f;
+        if(pt.x < -400 || pt.x > 400) {
+            i += 16;
+            continue;
+        }
+        // Get y coordinate
+        value_y.c[0] = msg->data[i + 4];
+        value_y.c[1] = msg->data[i + 5];
+        value_y.c[2] = msg->data[i + 6];
+        value_y.c[3] = msg->data[i + 7];
+        pt.y = value_y.f;
+        // Get z coordinate
+        value_z.c[0] = msg->data[i + 8];
+        value_z.c[1] = msg->data[i + 9];
+        value_z.c[2] = msg->data[i + 10];
+        value_z.c[3] = msg->data[i + 11];
+        pt.z = value_z.f;
+        // Calculate the distance from the point to the plane
+        auto norm = std::sqrt(final_ground_plane.a * final_ground_plane.a + final_ground_plane.b * final_ground_plane.b + final_ground_plane.c * final_ground_plane.c);
+        if (std::fabs(final_ground_plane.a * pt.x + final_ground_plane.b * pt.y + final_ground_plane.c * pt.z + final_ground_plane.d) / norm > 60) {
+            // Calculate the distance from the point to the sensor
+            float distance = std::sqrt(pt.x * pt.x + pt.y * pt.y + pt.z * pt.z);
+            if(distance < 740) {
+                num_danger_points++;
+            }
+        }
+        i += 16;
+    }
+    printf("Danger Points: %lu\n", num_danger_points);
+    if(num_danger_points > 15000 && num_danger_points < 60000)
+        printf("Possible danger! Be careful...\n");
+    else if(num_danger_points >= 60000)
+        printf("DANGER!!!\n");
 }
 
 void DepthSubscriber::convertToEulerAngles(const float qx, const float qy, const float qz, const float qw)
@@ -271,8 +277,10 @@ void DepthSubscriber::convertToEulerAngles(const float qx, const float qy, const
     double siny_cosp = 2 * (qw * qz + qx * qy);
     double cosy_cosp = 1 - 2 * (qy * qy + qz * qz);
     FSensor_yaw = std::atan2(siny_cosp, cosy_cosp);
-    printf("Roll: %f\tPitch: %f\tYaw: %f\n", FSensor_roll*180/3.14, FSensor_pitch*180/3.14, FSensor_yaw*180/3.14);
+    //printf("Roll: %f\tPitch: %f\tYaw: %f\n", FSensor_roll*180/3.14, FSensor_pitch*180/3.14, FSensor_yaw*180/3.14);
 }
+
+
 
 void DepthSubscriber::filterGroundPoints(const std::vector<Point>& in_pts, Plane& out_plane, const uint32_t width, const uint32_t height)
 {
@@ -315,12 +323,8 @@ bool DepthSubscriber::RANSAC(const Plane& in_plane, Plane& final_ground_plane)
     int   min_idx       = 0;
     int   max_tries     = 1000;
     int   c_max_inliers = 0;
-    float best_a        = 0.;
-    float best_b        = 0.;
-    float best_c        = 0.;
-    float best_d        = 0.;
     int max_iters       = 20;
-    for (auto k = 0; k < 20; k++) {
+    for (auto k = 0; k < max_iters; k++) {
         // Declare private point cloud to store current solution
         std::vector<Point> m_pcl;
         // Reset number of inliers in each iteration
@@ -342,13 +346,13 @@ bool DepthSubscriber::RANSAC(const Plane& in_plane, Plane& final_ground_plane)
             if (n > max_tries)
                 break;
         }
-        //printf("Terminei valid points com n=%d\n", n);
+
         if (!found_valid_pts) {
             std::cout << "WARNING (ransac): No valid set of points found ... "
                       << std::endl;
             return false;
         }
-        // Declarate the 3 points selected on this iteration
+        // Declare the 3 points selected on this iteration
         Point pt1 = Point(
                 in_plane.points[idx1].x, in_plane.points[idx1].y, in_plane.points[idx1].z);
         Point pt2 = Point(
@@ -369,7 +373,7 @@ bool DepthSubscriber::RANSAC(const Plane& in_plane, Plane& final_ground_plane)
             // https://www.geeksforgeeks.org/distance-between-a-point-and-a-plane-in-3-d/
             auto norm = std::sqrt(a * a + b * b + c * c);
             if (std::fabs(a * m_pt.x + b * m_pt.y + c * m_pt.z + d) / norm <
-                0.08) {
+                30) {
                 num_inliers++;
                 m_pcl.push_back(m_pt);
             }
@@ -378,11 +382,10 @@ bool DepthSubscriber::RANSAC(const Plane& in_plane, Plane& final_ground_plane)
         if (num_inliers > c_max_inliers) {
             c_max_inliers = num_inliers;
 
-            best_a = a;
-            best_b = b;
-            best_c = c;
-            best_d = d;
-
+            final_ground_plane.a = a;
+            final_ground_plane.b = b;
+            final_ground_plane.c = c;
+            final_ground_plane.d = d;
             final_ground_plane.points.clear();
             final_ground_plane.points = m_pcl;
         }
