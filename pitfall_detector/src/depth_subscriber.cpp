@@ -24,12 +24,13 @@ DepthSubscriber::DepthSubscriber() : Node("depth_subscriber"), FBuffer(this->get
     FSensor_pitch = 0;
     FPublisher = create_publisher<sensor_msgs::msg::PointCloud2>("point_cloud_filtered", 10);  //TODO: Delete
     FPublisher_ground = create_publisher<sensor_msgs::msg::PointCloud2>("point_cloud_ground", 10);  //TODO: Delete
+    removeOffsetZ(0.4822, 0.5171, 0.321, 0.63);
 }
 
 void DepthSubscriber::PointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
     // TODO: Delete
     RCLCPP_INFO(get_logger(), "Received point cloud from %s with %d points. Height = %d %d %d %d %d\n", msg->header.frame_id.c_str(), msg->row_step*msg->height, msg->height, msg->width, msg->is_dense, msg->point_step, msg->is_bigendian);
-
+/*
     // Get sensor orientation (roll, pitch , yaw)
     geometry_msgs::msg::TransformStamped tf;
     tf = FBuffer.lookupTransform("map", "depth_sensor", rclcpp::Time(0));
@@ -249,35 +250,44 @@ void DepthSubscriber::PointCloudCallback(const sensor_msgs::msg::PointCloud2::Sh
         printf("Possible danger! Be careful...\n");
     else if(num_danger_points >= 40000)
         printf("DANGER!!!\n");
+    */
 }
 
-void DepthSubscriber::convertQuaternionsToEulerAngles(const float qx, const float qy, const float qz, const float qw)
+void DepthSubscriber::removeOffsetZ(const float qx, const float qy, const float qz, const float qw)
 {
-    float v1, v2, v3;
-    double sinr_cosp = 2 * (qw * qx + qy * qz);
-    double cosr_cosp = 1 - 2 * (qx * qx + qy * qy);
-    printf("%f %f %f %f\n", qx, qy, qz, qw);
-    v1 = (float)std::atan2(sinr_cosp, cosr_cosp);
+    Vector3D p1(1,0,0);  // Vector perpendicular to the axis we want to nullify (z axis)
+    // Rotate p1 by q to get p2
+    Quaternion p(0, p1);
+    Quaternion q(qw, qx, qy, qz);
+    Quaternion qInverse(qw, -qx, -qy, -qz);
+    Quaternion rotatedVector=q*p*qInverse;
+    Vector3D p2(rotatedVector.v.x, rotatedVector.v.y, rotatedVector.v.z);
 
-    double sinp = 2 * (qw * qy - qz * qx);
-    if (std::abs(sinp) >= 1)
-        v2 = (float)std::copysign(M_PI / 2, sinp); // use 90 degrees if out of range
-    else
-        v2 = (float)std::asin(sinp);
+    // Create xy plane
+    Plane xy_plane;
+    xy_plane.a = 0;
+    xy_plane.b = 0;
+    xy_plane.c = 1;
+    xy_plane.d = 0;
 
-    double siny_cosp = 2 * (qw * qz + qx * qy);
-    double cosy_cosp = 1 - 2 * (qy * qy + qz * qz);
-    v3 = (float)std::atan2(siny_cosp, cosy_cosp);
+    // Find the projection of p2 in xy_plane
+    Vector3D projection(p2.x, p2.y, 0);
+    // Normalize vector
+    float magnitude = std::sqrt(projection.x * projection.x + projection.y * projection.y);
+    projection.x = projection.x / magnitude;
+    projection.y = projection.y / magnitude;
 
-    if(FSensor_orientation == "horizontal") {
-        FSensor_roll = v2;
-        FSensor_pitch = v1;
-    }
-    else {
-        FSensor_roll = (float)(-v3 - (M_PI/2));
-        FSensor_pitch = v2;
-    }
-    //printf("Roll: %f\tPitch: %f\tYaw: %f\n", FSensor_roll*180/3.14, FSensor_pitch*180/3.14, v3 * 180 / M_PI);
+    // Get angle from p1 to projection vector
+    float angle_difference = std::acos(p1.dot(projection) / (p1.length() * projection.length()));
+    //printf("%f\t%f %f %f\n", angle_difference*180/M_PI, projection.x, projection.y, projection.z); //TODO: Apagar
+
+    // Create new quaternion to remove angle difference
+    Quaternion remove_z_offset(std::cos(-angle_difference/2), 0, 0, std::sin(-angle_difference/2));
+
+    // Create new quaternion that combines original rotation with one that removes rotation around z
+    Quaternion final_quaternion = remove_z_offset * q;
+    printf("Final Quaternion: %f %f %f %f\n", final_quaternion.s, final_quaternion.v.x, final_quaternion.v.y, final_quaternion.v.z);
+
 }
 
 bool DepthSubscriber::RANSAC(const Plane& in_plane, Plane& final_ground_plane)

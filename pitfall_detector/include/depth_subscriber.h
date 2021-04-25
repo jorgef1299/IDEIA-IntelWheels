@@ -35,7 +35,7 @@ public:
     DepthSubscriber();
 private:
     void PointCloudCallback(sensor_msgs::msg::PointCloud2::SharedPtr msg);
-    void convertQuaternionsToEulerAngles(float qx, float qy, float qz, float qw);
+    void removeOffsetZ(const float qx, const float qy, const float qz, const float qw);
     bool RANSAC(const Plane& in_plane, Plane& final_ground_plane);
     float FMax_distance;
     float FSensor_height;  // Sensor height in relation to the ground
@@ -108,8 +108,7 @@ struct Vector3D : public Point
     }
 
     // Cross product between two vectors
-    Vector3D cross(const Vector3D& other)
-    {
+    Vector3D cross(const Vector3D& other) const {
         Vector3D res;
         res.x = +(y * other.z - z * other.y);
         res.y = -(x * other.z - z * other.x);
@@ -118,5 +117,99 @@ struct Vector3D : public Point
         return res;
     }
 
+    Vector3D operator+(const Vector3D& v) const
+    {
+        return Vector3D(x+v.x,y+v.y,z+v.z);
+    }
+
+    void operator*=(const float s)
+    {
+        x*=s;
+        y*=s;
+        z*=s;
+    }
+
+    Vector3D operator*(const float s) const
+    {
+        return Vector3D(s*x,s*y,s*z);
+    }
+
+    float operator*(const Vector3D& v)
+    {
+        return x*v.x+y*v.y+z*v.z;
+    }
+
+    float dot(const Vector3D& v) const{
+        return x*v.x + y*v.y + z*v.z;
+    }
+
+    float length()
+    {
+        return std::sqrt(x*x + y*y + z *z);
+    }
 };
+
+struct Quaternion
+{
+    float s;  // scalar
+    Vector3D v;
+
+    Quaternion(const float qw, const float qx, const float qy, const float qz)
+    {
+        s = qw;
+        v.x = qx;
+        v.y = qy;
+        v.z = qz;
+    }
+
+    Quaternion(float s_, Vector3D v_)
+    {
+        s = s_;
+        v.x = v_.x;
+        v.y = v_.y;
+        v.z = v_.z;
+    }
+
+    Quaternion operator+(const Quaternion& q)const
+    {
+        float scalar=s+q.s;
+        Vector3D imaginary=v+q.v;
+
+        return Quaternion(scalar,imaginary);
+    }
+
+    void operator*=(const Quaternion& q){
+
+        (*this)=multiply(q);
+    }
+
+    void operator*=(float value){
+        s*=value;
+        v*=value;
+    }
+
+    Quaternion operator*(const Quaternion q)
+    {
+        float scalar=s*q.s - v.dot(q.v);
+        Vector3D imaginary=q.v*s + v*q.s + v.cross(q.v);
+        //printf("Operator*: %f %f %f\t %f %f %f\n", scalar, s*q.s, v.dot(q.v), imaginary.x, imaginary.y, imaginary.z);
+        //printf("%f %f %f\t%f %f %f\n", v.x, v.y, v.z, q.v.x, q.v.y, q.v.z);
+        return Quaternion(scalar,imaginary);
+    }
+
+    Quaternion multiply(const Quaternion& q) const
+    {
+        float scalar=s*q.s - v.dot(q.v);
+        Vector3D imaginary=q.v*s + v*q.s + v.cross(q.v);
+        return Quaternion(scalar,imaginary);
+    }
+
+    Quaternion operator*(const float value) const
+    {
+        float scalar=s*value;
+        Vector3D imaginary=v*value;
+        return Quaternion(scalar,imaginary);
+    }
+};
+
 #endif //ROS2WS_DEPTH_SUBSCRIBER_H
