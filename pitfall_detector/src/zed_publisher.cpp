@@ -17,11 +17,10 @@ int main(int argc, char **argv)
     auto zed_node = std::make_shared<ZED2_camera>();
 
     while(stop_flag == 0){
-        zed_node->getDepthMap();
-        //zed_node->publishDepthImage();
+        zed_node->getData();
         zed_node->publishPointCloud();
         zed_node->publishTF();
     }
-    //rclcpp::spin(zed_node);
+
     return 0;
 }

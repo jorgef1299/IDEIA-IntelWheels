@@ -3,17 +3,13 @@ zed2_camera:
     mode: "ULTRA" # PERFORMANCE or ULTRA or QUALITY
     unit: "MILLIMETER" # MILLIMETER or CENTIMETER or FOOT or INCH
     minimum_distance: 400.0
-    max_range: 5000.0
+    max_range: 3000.0
     topic_to_publish: "/depth_map"
+    orientation: "horizontal"  # horizontal or vertical
 
 depth_subscriber:
   ros__parameters:
     topic_to_subscribe: "/point_cloud"
-    max_range: 3000.0  # MILLIMETERS
-    show_image: false
-    sensor_properties:
-      fx: 526.106323
-      fy: 526.106323
-      cx: 662.177063
-      cy: 352.036835
+    max_distance: 740.0
     sensor_height: 800  # MILLIMETERS
+    orientation: "horizontal"  # horizontal or vertical

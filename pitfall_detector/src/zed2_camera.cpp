@@ -8,6 +8,7 @@ ZED2_camera::ZED2_camera() : Node("zed2_camera")
     this->declare_parameter<float>("minimum_distance", 400);
     this->declare_parameter<float>("max_range", 3000);
     this->declare_parameter<std::string>("topic_to_publish", "/depth_map");
+    this->declare_parameter<std::string>("orientation", "horizontal");
     // Init all the parameters.
     init_parameters();
     std::string topic;
@@ -16,7 +17,6 @@ ZED2_camera::ZED2_camera() : Node("zed2_camera")
         std::cout << "ERROR in topic name! Exiting program..." << std::endl;
         exit(EXIT_FAILURE);
     }
-    FPubDepth = image_transport::create_publisher(this, topic);
     // Open camera.
     auto returned_state = FZed.open(FInit_params);
     if(returned_state != sl::ERROR_CODE::SUCCESS){
@@ -35,11 +35,10 @@ ZED2_camera::~ZED2_camera()
     FZed.close();
 }
 
-void ZED2_camera::getDepthMap()
+void ZED2_camera::getData()
 {
     if(FZed.grab() == sl::ERROR_CODE::SUCCESS) {
-        FZed.retrieveMeasure(FDepth, sl::MEASURE::DEPTH);
-        FZed.retrieveMeasure(FPointCloud, sl::MEASURE::XYZRGBA);
+        FZed.retrieveMeasure(FPointCloud, sl::MEASURE::XYZRGBA);  // Get Point Cloud
         // Get pose
         sl::POSITIONAL_TRACKING_STATE state = FZed.getPosition(FZed_pose, sl::REFERENCE_FRAME::WORLD);
     }
@@ -51,12 +50,14 @@ void ZED2_camera::getDepthMap()
 
 void ZED2_camera::init_parameters()
 {
-    std::string depth_mode, depth_unit;
-    float min_distance, max_range;
+    std::string depth_mode, distance_unit, sensor_orientation;
+    float min_distance;
+    // Read parameter values
     this->get_parameter("mode", depth_mode);
-    this->get_parameter("unit", depth_unit);
+    this->get_parameter("unit", distance_unit);
     this->get_parameter("minimum_distance", min_distance);
-    this->get_parameter("max_range", max_range);
+    this->get_parameter("max_range", FMaxRange);
+    this->get_parameter("orientation", sensor_orientation);
     // Define depth mode.
     if(depth_mode == "PERFORMANCE"){
         FInit_params.depth_mode = sl::DEPTH_MODE::PERFORMANCE;
@@ -71,57 +72,41 @@ void ZED2_camera::init_parameters()
         std::cout << "Error in depth mode parameter..." << std::endl;
         exit(EXIT_FAILURE);
     }
-    // Define depth unit.
-    if(depth_unit == "MILLIMETER"){
+    // Define distance unit.
+    if(distance_unit == "MILLIMETER"){
         FInit_params.coordinate_units = sl::UNIT::MILLIMETER;
     }
-    else if(depth_unit == "CENTIMETER"){
+    else if(distance_unit == "CENTIMETER"){
         FInit_params.coordinate_units = sl::UNIT::CENTIMETER;
     }
-    else if(depth_unit == "FOOT"){
+    else if(distance_unit == "FOOT"){
         FInit_params.coordinate_units = sl::UNIT::FOOT;
     }
-    else if(depth_unit == "INCH"){
+    else if(distance_unit == "INCH"){
         FInit_params.coordinate_units = sl::UNIT::INCH;
     }
     else {
-        std::cout << "Error in depth unit parameter..." << std::endl;
+        std::cout << "Error in distance unit parameter..." << std::endl;
         exit(EXIT_FAILURE);
     }
     // Set min and max range.
+    if(min_distance <= 0 || min_distance > 5000 || FMaxRange <= min_distance) {
+        std::cout << "Error in minimum or maximum distance value parameters..." << std::endl;
+        exit(EXIT_FAILURE);
+    }
     FInit_params.depth_minimum_distance = min_distance;
-    FInit_params.depth_maximum_distance = max_range;
-    // Set coordinate system to be right-handed and z-up
-    FInit_params.coordinate_system = sl::COORDINATE_SYSTEM::RIGHT_HANDED_Z_UP;
-}
-
-std::shared_ptr<sensor_msgs::msg::Image> imageToROSMsg(sl::Mat &img, std::string frameId, rclcpp::Time t)
-{
-    std::shared_ptr<sensor_msgs::msg::Image> imgMessage = std::make_shared<sensor_msgs::msg::Image>();
-
-    imgMessage->header.stamp = t;
-    imgMessage->header.frame_id = frameId;
-    imgMessage->height = img.getHeight();
-    imgMessage->width = img.getWidth();
-
-    int num = 1; // for endianness detection
-    imgMessage->is_bigendian = *(char *) &num != 1;
-    imgMessage->step = img.getStepBytes();
-    size_t size = imgMessage->step * imgMessage->height;
-    uint8_t* data_ptr=nullptr;
-    sl::MAT_TYPE dataType = img.getDataType();
-    imgMessage->encoding = sensor_msgs::image_encodings::TYPE_32FC1;
-    data_ptr = (uint8_t*)img.getPtr<sl::float1>();
-    imgMessage->data = std::vector<uint8_t>(data_ptr, data_ptr+size);
-
-    return imgMessage;
-}
-
-void ZED2_camera::publishDepthImage()
-{
-    rclcpp::Time timeStamp = slTime2Ros(FZed.getTimestamp(sl::TIME_REFERENCE::CURRENT),get_clock()->get_clock_type());
-    auto depth_img = imageToROSMsg(FDepth, "ZED2 depth image", timeStamp);
-    FPubDepth.publish(depth_img);
+    FInit_params.depth_maximum_distance = FMaxRange;
+    // Set coordinate system
+    if(sensor_orientation == "horizontal") {
+        FInit_params.coordinate_system = sl::COORDINATE_SYSTEM::RIGHT_HANDED_Z_UP;
+    }
+    else if(sensor_orientation == "vertical") {
+        FInit_params.coordinate_system = sl::COORDINATE_SYSTEM::RIGHT_HANDED_Y_UP;
+    }
+    else {
+        std::cout << "Error in sensor orientation parameter..." << std::endl;
+        exit(EXIT_FAILURE);
+    }
 }
 
 void ZED2_camera::publishTF()
@@ -135,9 +120,8 @@ void ZED2_camera::publishTF()
     float qy = FZed_pose.getOrientation().oy;
     float qz = FZed_pose.getOrientation().oz;
     float qw = FZed_pose.getOrientation().ow;
-    // Create TF Message
+    // Create tf Message
     geometry_msgs::msg::TransformStamped tf_msg;
-    //TODO: Fill tf_msgs's header
     tf_msg.header.frame_id = "map";
     tf_msg.child_frame_id = "depth_sensor";
     tf_msg.transform.translation.x = tx;
@@ -147,7 +131,7 @@ void ZED2_camera::publishTF()
     tf_msg.transform.rotation.y = qy;
     tf_msg.transform.rotation.z = qz;
     tf_msg.transform.rotation.w = qw;
-
+    // Publish tf message
     FPubTF.sendTransform(tf_msg);
 }
 
@@ -196,8 +180,7 @@ void ZED2_camera::publishPointCloud() {
             FPointCloud.getValue(i,j, &pt);
 
             float distance = sqrt(pt.x*pt.x + pt.y*pt.y + pt.z*pt.z);
-            //printf("D: %f\n", distance);
-            if(distance > 0 && distance < 3000) {
+            if(distance > 0 && distance < FMaxRange) {
                 count++;
                 // Convert float to byte[4]
                 union Float value_x, value_y, value_z, value_rgb;
@@ -205,36 +188,27 @@ void ZED2_camera::publishPointCloud() {
                 value_y.m_float = pt.y;
                 value_z.m_float = pt.z;
                 value_rgb.m_float = pt.w;
-                //printf("%f %f %f\n", value_x.m_float, value_y.m_float, value_z.m_float);
+
                 for(int k = 0; k < 4; k++) {
-                    msg.data.push_back(value_x.m_bytes[k]);
+                    msg.data.push_back(value_x.m_bytes[k]);  // pt.x bytes
                 }
                 for(int k = 0; k < 4; k++) {
-                    msg.data.push_back(value_y.m_bytes[k]);
+                    msg.data.push_back(value_y.m_bytes[k]);  // pt.y bytes
                 }
                 for(int k = 0; k < 4; k++) {
-                    msg.data.push_back(value_z.m_bytes[k]);
+                    msg.data.push_back(value_z.m_bytes[k]);  // pt.z bytes
                 }
-                msg.data.push_back(value_rgb.m_bytes[2]);
-                msg.data.push_back(value_rgb.m_bytes[1]);
-                msg.data.push_back(value_rgb.m_bytes[0]);
-                msg.data.push_back(value_rgb.m_bytes[3]);
-                /*for(int k = 0; k < 4; k++) {
-                    msg.data.push_back(value_rgb.m_bytes[k]);
-                }*/
+                msg.data.push_back(value_rgb.m_bytes[2]);  // r
+                msg.data.push_back(value_rgb.m_bytes[1]);  // g
+                msg.data.push_back(value_rgb.m_bytes[0]);  // b
+                msg.data.push_back(value_rgb.m_bytes[3]);  // a
             }
         }
     }
     msg.row_step = msg.point_step * count;
     msg.width = count;
-
-    if(count > 0)
-        FPublisher->publish(msg);
-}
-
-rclcpp::Time slTime2Ros(sl::Timestamp t, rcl_clock_type_t clock_type) {
-    uint64_t ts_nsec = t.getNanoseconds();
-    auto sec = static_cast<uint32_t>(ts_nsec / 1000000000);
-    auto nsec = static_cast<uint32_t>(ts_nsec % 1000000000);
-    return rclcpp::Time(sec, nsec, clock_type);
+    // Check if there are points to publish
+    if(count > 0) {
+        FPublisher->publish(msg);  // Publish Point Cloud
+    }
 }

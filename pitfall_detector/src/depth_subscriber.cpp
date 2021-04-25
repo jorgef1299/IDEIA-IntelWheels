@@ -1,7 +1,4 @@
-//TODO: Change default values of zed parameters
 #include "depth_subscriber.h"
-
-uint8_t last_state_show = 0; // used to close opencv windows only one time.
 
 DepthSubscriber::DepthSubscriber() : Node("depth_subscriber"), FBuffer(this->get_clock()), FListener(FBuffer)
 {
@@ -11,37 +8,32 @@ DepthSubscriber::DepthSubscriber() : Node("depth_subscriber"), FBuffer(this->get
     depth_qos.durability_volatile();
 
     Node::declare_parameter<std::string>("topic_to_subscribe", "/point_cloud");
-    Node::declare_parameter<float>("max_range", 3000.0);
-    Node::declare_parameter<bool>("show_image", false);
-    Node::declare_parameter<float>("sensor_properties.fx", 600);
-    Node::declare_parameter<float>("sensor_properties.fy", 600);
-    Node::declare_parameter<float>("sensor_properties.cx", 600);
-    Node::declare_parameter<float>("sensor_properties.cy", 600);
-    Node::declare_parameter<float>("sensor_height", 800);
+    Node::declare_parameter<float>("max_distance", 740.0);  // max distance to be danger
+    Node::declare_parameter<float>("sensor_height", 800.0);  // distance from the ground to the sensor in the z axis
+    Node::declare_parameter<std::string>("orientation", "horizontal");
 
     FSubscriber = this->create_subscription<sensor_msgs::msg::PointCloud2>(this->get_parameter("topic_to_subscribe").as_string(), depth_qos, std::bind(&DepthSubscriber::PointCloudCallback, this, _1));
-    FMax_range = (float)this->get_parameter("max_range").as_double();
-    Ffx = (float)this->get_parameter("sensor_properties.fx").as_double();
-    Ffy = (float)this->get_parameter("sensor_properties.fy").as_double();
-    Fcx = (float)this->get_parameter("sensor_properties.cx").as_double();
-    Fcy = (float)this->get_parameter("sensor_properties.cy").as_double();
+    FMax_distance = (float)this->get_parameter("max_distance").as_double();
     FSensor_height = (float)this->get_parameter("sensor_height").as_double();
-
-    FPublisher = create_publisher<sensor_msgs::msg::PointCloud2>("point_cloud_filtered", 10);
-    FPublisher_ground = create_publisher<sensor_msgs::msg::PointCloud2>("point_cloud_ground", 10);
+    FSensor_orientation = this->get_parameter("orientation").as_string();
+    if(FSensor_orientation != "horizontal" && FSensor_orientation != "vertical") {
+        std::cout << "Error in sensor orientation parameter..." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    FSensor_roll = 0;
+    FSensor_pitch = 0;
+    FPublisher = create_publisher<sensor_msgs::msg::PointCloud2>("point_cloud_filtered", 10);  //TODO: Delete
+    FPublisher_ground = create_publisher<sensor_msgs::msg::PointCloud2>("point_cloud_ground", 10);  //TODO: Delete
 }
 
-DepthSubscriber::~DepthSubscriber()
-{
-    cv::destroyAllWindows();
-}
 void DepthSubscriber::PointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+    // TODO: Delete
     RCLCPP_INFO(get_logger(), "Received point cloud from %s with %d points. Height = %d %d %d %d %d\n", msg->header.frame_id.c_str(), msg->row_step*msg->height, msg->height, msg->width, msg->is_dense, msg->point_step, msg->is_bigendian);
 
-    /* Get sensor orientation (roll, pitch , yaw) */
+    // Get sensor orientation (roll, pitch , yaw)
     geometry_msgs::msg::TransformStamped tf;
     tf = FBuffer.lookupTransform("map", "depth_sensor", rclcpp::Time(0));
-    convertToEulerAngles(tf.transform.rotation.x, tf.transform.rotation.y, tf.transform.rotation.z, tf.transform.rotation.w);
+    convertQuaternionsToEulerAngles(tf.transform.rotation.x, tf.transform.rotation.y, tf.transform.rotation.z, tf.transform.rotation.w);
 
     // Calculate the estimated ground plane equation
     Vector3D v1(0, std::cos(-FSensor_pitch), std::sin(-FSensor_pitch));
@@ -52,9 +44,6 @@ void DepthSubscriber::PointCloudCallback(const sensor_msgs::msg::PointCloud2::Sh
     estimatedGround.b = abc.y;
     estimatedGround.c = abc.z;
     estimatedGround.d = -FSensor_height * std::sqrt(estimatedGround.a * estimatedGround.a + estimatedGround.b * estimatedGround.b + estimatedGround.c * estimatedGround.c);
-
-    //printf("%f %f %f %f\n", estimatedGround.a, estimatedGround.b, estimatedGround.c, estimatedGround.d);
-    //printf("Vetores: 1: %f %f %f\t 2: %f %f %f\n", v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
 
     // TODO: DELETE
     int count = 0;
@@ -90,7 +79,7 @@ void DepthSubscriber::PointCloudCallback(const sensor_msgs::msg::PointCloud2::Sh
         pt.a = ((float)msg->data[i+15] / 255);
         i += 16;
 
-        // Calculate that distance of each point to the plane and consider only the points that are very close to the estimated plane
+        // Calculate the distance of each point to the plane and consider only the points that are very close to the estimated plane
         auto norm = std::sqrt(estimatedGround.a * estimatedGround.a + estimatedGround.b * estimatedGround.b + estimatedGround.c * estimatedGround.c);
         if (std::fabs(estimatedGround.a * pt.x + estimatedGround.b * pt.y + estimatedGround.c * pt.z + estimatedGround.d) / norm < 200) {
             estimatedGround.points.push_back(pt);
@@ -151,9 +140,9 @@ void DepthSubscriber::PointCloudCallback(const sensor_msgs::msg::PointCloud2::Sh
     if(count > 0)
         FPublisher->publish(msg_pc2);
 
+    // Find the best fitting ground plane
     Plane final_ground_plane;
     RANSAC(estimatedGround, final_ground_plane);
-    //printf("Nº de pontos no plano do chão: %lu\n", final_ground_plane.points.size());
 
     //TODO:Delete
     auto msg_pc_ground = sensor_msgs::msg::PointCloud2();
@@ -224,7 +213,7 @@ void DepthSubscriber::PointCloudCallback(const sensor_msgs::msg::PointCloud2::Sh
         value_x.c[2] = msg->data[i + 2];
         value_x.c[3] = msg->data[i + 3];
         pt.x = value_x.f;
-        if(pt.x < -400 || pt.x > 400) {
+        if(pt.x < -300 || pt.x > 300) {
             i += 16;
             continue;
         }
@@ -240,6 +229,10 @@ void DepthSubscriber::PointCloudCallback(const sensor_msgs::msg::PointCloud2::Sh
         value_z.c[2] = msg->data[i + 10];
         value_z.c[3] = msg->data[i + 11];
         pt.z = value_z.f;
+        if(pt.z > 500) {  // Ignore point if it is too high
+            i += 16;
+            continue;
+        }
         // Calculate the distance from the point to the plane
         auto norm = std::sqrt(final_ground_plane.a * final_ground_plane.a + final_ground_plane.b * final_ground_plane.b + final_ground_plane.c * final_ground_plane.c);
         if (std::fabs(final_ground_plane.a * pt.x + final_ground_plane.b * pt.y + final_ground_plane.c * pt.z + final_ground_plane.d) / norm > 60) {
@@ -252,69 +245,39 @@ void DepthSubscriber::PointCloudCallback(const sensor_msgs::msg::PointCloud2::Sh
         i += 16;
     }
     printf("Danger Points: %lu\n", num_danger_points);
-    if(num_danger_points > 15000 && num_danger_points < 60000)
+    if(num_danger_points > 15000 && num_danger_points < 40000)
         printf("Possible danger! Be careful...\n");
-    else if(num_danger_points >= 60000)
+    else if(num_danger_points >= 40000)
         printf("DANGER!!!\n");
 }
 
-void DepthSubscriber::convertToEulerAngles(const float qx, const float qy, const float qz, const float qw)
+void DepthSubscriber::convertQuaternionsToEulerAngles(const float qx, const float qy, const float qz, const float qw)
 {
-    // Consider that the received pitch is the roll and the received roll is the pitch...
-    // roll (x-axis rotation)
+    float v1, v2, v3;
     double sinr_cosp = 2 * (qw * qx + qy * qz);
     double cosr_cosp = 1 - 2 * (qx * qx + qy * qy);
-    FSensor_pitch = std::atan2(sinr_cosp, cosr_cosp);
+    printf("%f %f %f %f\n", qx, qy, qz, qw);
+    v1 = (float)std::atan2(sinr_cosp, cosr_cosp);
 
-    // pitch (y-axis rotation)
     double sinp = 2 * (qw * qy - qz * qx);
     if (std::abs(sinp) >= 1)
-        FSensor_roll = std::copysign(M_PI / 2, sinp); // use 90 degrees if out of range
+        v2 = (float)std::copysign(M_PI / 2, sinp); // use 90 degrees if out of range
     else
-        FSensor_roll = std::asin(sinp);
+        v2 = (float)std::asin(sinp);
 
-    // yaw (z-axis rotation)
     double siny_cosp = 2 * (qw * qz + qx * qy);
     double cosy_cosp = 1 - 2 * (qy * qy + qz * qz);
-    FSensor_yaw = std::atan2(siny_cosp, cosy_cosp);
-    //printf("Roll: %f\tPitch: %f\tYaw: %f\n", FSensor_roll*180/3.14, FSensor_pitch*180/3.14, FSensor_yaw*180/3.14);
-}
+    v3 = (float)std::atan2(siny_cosp, cosy_cosp);
 
-
-
-void DepthSubscriber::filterGroundPoints(const std::vector<Point>& in_pts, Plane& out_plane, const uint32_t width, const uint32_t height)
-{
-    for (int j = 0; j < width; )
-    {
-        for (int i = 0; i < height-5; )
-        {
-            int lower_idx = j + i * width;
-            int upper_idx = j + (i + 5) * width;
-
-            Point upper_pt = in_pts[upper_idx];
-            Point lower_pt = in_pts[lower_idx];
-
-            if (upper_pt.z == -1 || lower_pt.z == -1)
-            {
-                // no info to check, invalid points
-                continue;
-            }
-            float dX = upper_pt.x - lower_pt.x;
-            float dY = upper_pt.y - lower_pt.y;
-            float dZ = upper_pt.z - lower_pt.z;
-
-            //float vertical_angle = std::acos((dX * dX + dY * dY) / (std::sqrt(dX * dX + dY * dY) * std::sqrt(dX * dX + dY * dY + dZ * dZ)));
-            float vertical_angle = std::atan2(dZ, std::sqrt(dX * dX + dY * dY + dZ * dZ));
-            //printf("Vertical angle: %f\n", vertical_angle);
-            if (abs(vertical_angle) <= 3*3.14156/180)
-            {
-                out_plane.points.push_back(lower_pt);
-                out_plane.points.push_back(upper_pt);
-            }
-            i += 5;
-        }
-        j += 5;
+    if(FSensor_orientation == "horizontal") {
+        FSensor_roll = v2;
+        FSensor_pitch = v1;
     }
+    else {
+        FSensor_roll = (float)(-v3 - (M_PI/2));
+        FSensor_pitch = v2;
+    }
+    //printf("Roll: %f\tPitch: %f\tYaw: %f\n", FSensor_roll*180/3.14, FSensor_pitch*180/3.14, v3 * 180 / M_PI);
 }
 
 bool DepthSubscriber::RANSAC(const Plane& in_plane, Plane& final_ground_plane)

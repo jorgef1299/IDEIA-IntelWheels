@@ -14,8 +14,6 @@
 // Point Cloud header
 #include "sensor_msgs/msg/point_cloud2.hpp"
 
-#include <fstream>
-#include <iostream>
 
 using namespace std::placeholders;
 
@@ -35,26 +33,18 @@ class DepthSubscriber : public rclcpp::Node
 {
 public:
     DepthSubscriber();
-    ~DepthSubscriber();
 private:
-    void PointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
-    void depthCallback(const sensor_msgs::msg::Image::SharedPtr msg);
-    void showDepthMap(cv::Mat map, uint32_t width , uint32_t height);
-    void convertPixel2World(const Point& in_pt, Point& out_pt);
-    void convertToEulerAngles(const float qx, const float qy, const float qz, const float qw);
-    void filterGroundPoints(const std::vector<Point>& in_pts, Plane& out_plane, const uint32_t width, const uint32_t height);
+    void PointCloudCallback(sensor_msgs::msg::PointCloud2::SharedPtr msg);
+    void convertQuaternionsToEulerAngles(float qx, float qy, float qz, float qw);
     bool RANSAC(const Plane& in_plane, Plane& final_ground_plane);
-    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr FSubscriber;
-    tf2_ros::Buffer FBuffer;
-    tf2_ros::TransformListener FListener;
-    float FMax_range;
-    Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic> FRange_mat;
-    float Ffx, Ffy;
-    float Fcx, Fcy;
-    float FSensor_height;  // Sensor height in relation to the ground //TODO: Adicionar parâmetro
+    float FMax_distance;
+    float FSensor_height;  // Sensor height in relation to the ground
+    std::string FSensor_orientation;
     float FSensor_roll;
     float FSensor_pitch;
-    float FSensor_yaw;
+    tf2_ros::Buffer FBuffer;  // tf buffer
+    tf2_ros::TransformListener FListener;  // Listen to tf
+    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr FSubscriber;  // Subscriber for Point Cloud
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr FPublisher;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr FPublisher_ground;
 };
@@ -86,62 +76,6 @@ struct Point {
     uint8_t g;
     uint8_t b;
     float a;
-};
-
-struct Pose {
-    Pose()
-    {
-        x = 0;
-        y = 0;
-        z = 0;
-        roll = 0;
-        pitch = 0;
-        yaw = 0;
-    }
-    Pose(const float x_, const float y_, const float z_, const float roll_, const float pitch_, const float yaw_)
-    {
-        x = x_;
-        y = y_;
-        z = z_;
-        roll = roll_;
-        pitch = pitch_;
-        yaw = yaw_;
-    }
-    // Convert Euler angles to a Rotation matrix
-    void toRotMatrix(std::array<float, 9>& m_rot) const
-    {
-        float ci = cos(roll);
-        float cj = cos(pitch);
-        float ch = cos(yaw);
-        float si = sin(roll);
-        float sj = sin(pitch);
-        float sh = sin(yaw);
-        float cc = ci * ch;
-        float cs = ci * sh;
-        float sc = si * ch;
-        float ss = si * sh;
-
-        // Store the values
-        m_rot[0] = cj * ch;
-        m_rot[1] = sj * sc - cs;
-        m_rot[2] = sj * cc + ss;
-        m_rot[3] = cj * sh;
-        m_rot[4] = sj * ss + cc;
-        m_rot[5] = sj * cs - sc;
-        m_rot[6] = -sj;
-        m_rot[7] = cj * si;
-        m_rot[8] = cj * ci;
-    }
-
-
-    // Cartesian coordinates
-    float x;
-    float y;
-    float z;
-    // Euler angles
-    float roll;
-    float pitch;
-    float yaw;
 };
 
 struct Plane
