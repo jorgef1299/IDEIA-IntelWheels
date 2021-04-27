@@ -24,27 +24,27 @@ DepthSubscriber::DepthSubscriber() : Node("depth_subscriber"), FBuffer(this->get
     FSensor_pitch = 0;
     FPublisher = create_publisher<sensor_msgs::msg::PointCloud2>("point_cloud_filtered", 10);  //TODO: Delete
     FPublisher_ground = create_publisher<sensor_msgs::msg::PointCloud2>("point_cloud_ground", 10);  //TODO: Delete
-    removeOffsetZ(0.4822, 0.5171, 0.321, 0.63);
+    //removeOffsetZ(0.4822, 0.5171, 0.321, 0.63);
 }
 
 void DepthSubscriber::PointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
     // TODO: Delete
     RCLCPP_INFO(get_logger(), "Received point cloud from %s with %d points. Height = %d %d %d %d %d\n", msg->header.frame_id.c_str(), msg->row_step*msg->height, msg->height, msg->width, msg->is_dense, msg->point_step, msg->is_bigendian);
-/*
+
     // Get sensor orientation (roll, pitch , yaw)
     geometry_msgs::msg::TransformStamped tf;
     tf = FBuffer.lookupTransform("map", "depth_sensor", rclcpp::Time(0));
-    convertQuaternionsToEulerAngles(tf.transform.rotation.x, tf.transform.rotation.y, tf.transform.rotation.z, tf.transform.rotation.w);
+    //printf("Initial transform: %f %f %f %f\n", tf.transform.rotation.w, -tf.transform.rotation.x, -tf.transform.rotation.y, tf.transform.rotation.z);
+    Quaternion sensor_orientation = removeOffsetZ(-tf.transform.rotation.x, -tf.transform.rotation.y, tf.transform.rotation.z, tf.transform.rotation.w);
+    printf("Ground normal: %f %f %f\n", sensor_orientation.v.x, sensor_orientation.v.y, sensor_orientation.v.z);
+
 
     // Calculate the estimated ground plane equation
-    Vector3D v1(0, std::cos(-FSensor_pitch), std::sin(-FSensor_pitch));
-    Vector3D v2(std::cos(FSensor_roll), 0, std::sin(FSensor_roll));
-    Vector3D abc = v1.cross(v2);
     Plane estimatedGround;
-    estimatedGround.a = abc.x;
-    estimatedGround.b = abc.y;
-    estimatedGround.c = abc.z;
-    estimatedGround.d = -FSensor_height * std::sqrt(estimatedGround.a * estimatedGround.a + estimatedGround.b * estimatedGround.b + estimatedGround.c * estimatedGround.c);
+    estimatedGround.a = sensor_orientation.v.x;
+    estimatedGround.b = sensor_orientation.v.y;
+    estimatedGround.c = sensor_orientation.v.z;
+    estimatedGround.d = FSensor_height;
 
     // TODO: DELETE
     int count = 0;
@@ -250,11 +250,12 @@ void DepthSubscriber::PointCloudCallback(const sensor_msgs::msg::PointCloud2::Sh
         printf("Possible danger! Be careful...\n");
     else if(num_danger_points >= 40000)
         printf("DANGER!!!\n");
-    */
+
 }
 
-void DepthSubscriber::removeOffsetZ(const float qx, const float qy, const float qz, const float qw)
+Quaternion DepthSubscriber::removeOffsetZ(const float qx, const float qy, const float qz, const float qw)
 {
+    Quaternion r(0,0,0,1);  // Vector normal to ground when pitch = 0 and roll = 0
     Vector3D p1(1,0,0);  // Vector perpendicular to the axis we want to nullify (z axis)
     // Rotate p1 by q to get p2
     Quaternion p(0, p1);
@@ -263,30 +264,28 @@ void DepthSubscriber::removeOffsetZ(const float qx, const float qy, const float 
     Quaternion rotatedVector=q*p*qInverse;
     Vector3D p2(rotatedVector.v.x, rotatedVector.v.y, rotatedVector.v.z);
 
-    // Create xy plane
-    Plane xy_plane;
-    xy_plane.a = 0;
-    xy_plane.b = 0;
-    xy_plane.c = 1;
-    xy_plane.d = 0;
-
     // Find the projection of p2 in xy_plane
     Vector3D projection(p2.x, p2.y, 0);
+    //printf("Vetor2: %f %f\n", p2.x, p2.y);
     // Normalize vector
     float magnitude = std::sqrt(projection.x * projection.x + projection.y * projection.y);
     projection.x = projection.x / magnitude;
     projection.y = projection.y / magnitude;
 
     // Get angle from p1 to projection vector
-    float angle_difference = std::acos(p1.dot(projection) / (p1.length() * projection.length()));
-    //printf("%f\t%f %f %f\n", angle_difference*180/M_PI, projection.x, projection.y, projection.z); //TODO: Apagar
+    float angle_difference = std::atan2(projection.y, projection.x);
+    //printf("Angle difference: %f\n", angle_difference);
 
     // Create new quaternion to remove angle difference
     Quaternion remove_z_offset(std::cos(-angle_difference/2), 0, 0, std::sin(-angle_difference/2));
 
     // Create new quaternion that combines original rotation with one that removes rotation around z
     Quaternion final_quaternion = remove_z_offset * q;
-    printf("Final Quaternion: %f %f %f %f\n", final_quaternion.s, final_quaternion.v.x, final_quaternion.v.y, final_quaternion.v.z);
+    //printf("Final Quaternion: %f %f %f %f\n", final_quaternion.s, final_quaternion.v.x, final_quaternion.v.y, final_quaternion.v.z);
+
+    Quaternion qFinalInverse(final_quaternion.s, -final_quaternion.v.x, -final_quaternion.v.y, -final_quaternion.v.z);
+    Quaternion groundNormal=final_quaternion*r*qFinalInverse;
+    return groundNormal;
 
 }
 

@@ -7,8 +7,7 @@ ZED2_camera::ZED2_camera() : Node("zed2_camera")
     this->declare_parameter<std::string>("unit", "MILLIMETER");
     this->declare_parameter<float>("minimum_distance", 400);
     this->declare_parameter<float>("max_range", 3000);
-    this->declare_parameter<std::string>("topic_to_publish", "/depth_map");
-    this->declare_parameter<std::string>("orientation", "horizontal");
+    this->declare_parameter<std::string>("topic_to_publish", "/point_cloud");
     // Init all the parameters.
     init_parameters();
     std::string topic;
@@ -27,7 +26,7 @@ ZED2_camera::ZED2_camera() : Node("zed2_camera")
     sl::PositionalTrackingParameters tracking_parameters;
     FZed.enablePositionalTracking(tracking_parameters);
 
-    FPublisher = create_publisher<sensor_msgs::msg::PointCloud2>("point_cloud", 10);
+    FPublisher = create_publisher<sensor_msgs::msg::PointCloud2>(this->get_parameter("topic_to_publish").as_string(), 10);
 }
 
 ZED2_camera::~ZED2_camera()
@@ -50,14 +49,13 @@ void ZED2_camera::getData()
 
 void ZED2_camera::init_parameters()
 {
-    std::string depth_mode, distance_unit, sensor_orientation;
+    std::string depth_mode, distance_unit;
     float min_distance;
     // Read parameter values
     this->get_parameter("mode", depth_mode);
     this->get_parameter("unit", distance_unit);
     this->get_parameter("minimum_distance", min_distance);
     this->get_parameter("max_range", FMaxRange);
-    this->get_parameter("orientation", sensor_orientation);
     // Define depth mode.
     if(depth_mode == "PERFORMANCE"){
         FInit_params.depth_mode = sl::DEPTH_MODE::PERFORMANCE;
@@ -96,17 +94,9 @@ void ZED2_camera::init_parameters()
     }
     FInit_params.depth_minimum_distance = min_distance;
     FInit_params.depth_maximum_distance = FMaxRange;
+
     // Set coordinate system
-    if(sensor_orientation == "horizontal") {
-        FInit_params.coordinate_system = sl::COORDINATE_SYSTEM::RIGHT_HANDED_Z_UP;
-    }
-    else if(sensor_orientation == "vertical") {
-        FInit_params.coordinate_system = sl::COORDINATE_SYSTEM::RIGHT_HANDED_Y_UP;
-    }
-    else {
-        std::cout << "Error in sensor orientation parameter..." << std::endl;
-        exit(EXIT_FAILURE);
-    }
+    FInit_params.coordinate_system = sl::COORDINATE_SYSTEM::RIGHT_HANDED_Z_UP;
 }
 
 void ZED2_camera::publishTF()

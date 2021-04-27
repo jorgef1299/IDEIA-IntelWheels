@@ -22,6 +22,7 @@ struct Point;
 struct Pose;
 struct Plane;
 struct Vector3D;
+struct Quaternion;
 
 union Float {
     float f;
@@ -35,7 +36,7 @@ public:
     DepthSubscriber();
 private:
     void PointCloudCallback(sensor_msgs::msg::PointCloud2::SharedPtr msg);
-    void removeOffsetZ(const float qx, const float qy, const float qz, const float qw);
+    Quaternion removeOffsetZ(const float qx, const float qy, const float qz, const float qw);
     bool RANSAC(const Plane& in_plane, Plane& final_ground_plane);
     float FMax_distance;
     float FSensor_height;  // Sensor height in relation to the ground

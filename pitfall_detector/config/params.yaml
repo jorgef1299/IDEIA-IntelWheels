@@ -4,8 +4,7 @@ zed2_camera:
     unit: "MILLIMETER" # MILLIMETER or CENTIMETER or FOOT or INCH
     minimum_distance: 400.0
     max_range: 3000.0
-    topic_to_publish: "/depth_map"
-    orientation: "horizontal"  # horizontal or vertical
+    topic_to_publish: "/point_cloud"
 
 depth_subscriber:
   ros__parameters:
