@@ -36,18 +36,21 @@ public:
     DepthSubscriber();
 private:
     void PointCloudCallback(sensor_msgs::msg::PointCloud2::SharedPtr msg);
-    Quaternion removeOffsetZ(const float qx, const float qy, const float qz, const float qw);
+    Quaternion findGroundNormal(float qx, float qy, float qz, float qw);
     bool RANSAC(const Plane& in_plane, Plane& final_ground_plane);
+    void publishGroundPointCloud(Plane& ground_points);
+    uint8_t evaluateDanger(const sensor_msgs::msg::PointCloud2::SharedPtr& msg, uint32_t total_bytes, Plane& ground_plane, Quaternion sensor_orientation);
     float FMax_distance;
     float FSensor_height;  // Sensor height in relation to the ground
+    float FSensor_normal_inclination;
+    float FSensor_max_inclination;
     std::string FSensor_orientation;
-    float FSensor_roll;
-    float FSensor_pitch;
     tf2_ros::Buffer FBuffer;  // tf buffer
     tf2_ros::TransformListener FListener;  // Listen to tf
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr FSubscriber;  // Subscriber for Point Cloud
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr FPublisher;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr FPublisher_ground;
+    uint8_t count_errors_ransac;
 };
 
 struct Point {
