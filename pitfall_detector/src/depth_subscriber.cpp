@@ -89,8 +89,10 @@ void DepthSubscriber::PointCloudCallback(const sensor_msgs::msg::PointCloud2::Sh
     //! Find the best fitting ground plane
     Plane final_ground_plane;
     bool ret_ransac = RANSAC(estimatedGround, final_ground_plane);
-    if(!ret_ransac)
+    if(!ret_ransac) {
         count_errors_ransac++;
+        return;
+    }
     else if(count_errors_ransac > 0)
         count_errors_ransac = 0;
     //! Publish point cloud with ground points
@@ -105,10 +107,22 @@ void DepthSubscriber::PointCloudCallback(const sensor_msgs::msg::PointCloud2::Sh
         ret = evaluateDanger(msg, total_bytes, final_ground_plane, sensor_orientation);
 
     if(ret == 1) {
-        RCLCPP_INFO(get_logger(), "Possible danger! Be careful...\n");
+        RCLCPP_INFO(get_logger(), "Too much inclination. DANGER!!!\n");
     }
     else if(ret == 2) {
-        RCLCPP_INFO(get_logger(), "DANGER!!!\n");
+        RCLCPP_INFO(get_logger(), "Invalid ground detection. Lack of points... DANGER!!!\n");
+    }
+    else if(ret == 3) {
+        RCLCPP_INFO(get_logger(), "Probable obstacle. Be careful...\n");
+    }
+    else if(ret == 4) {
+        RCLCPP_INFO(get_logger(), "Obstacle very close.. DANGER!!!\n");
+    }
+    else if(ret == 5) {
+        RCLCPP_INFO(get_logger(), "Probable hole. Be careful...\n");
+    }
+    else if(ret == 6) {
+        RCLCPP_INFO(get_logger(), "Hole very close. DANGER!!!\n");
     }
 }
 
@@ -242,7 +256,6 @@ bool DepthSubscriber::RANSAC(const Plane& in_plane, Plane& final_ground_plane)
                 break;
         }
         if (!found_valid_pts) {
-            std::cout << "WARNING (ransac): No valid set of points found ... " << std::endl;
             return false;
         }
         //! Declare the 3 points selected on this iteration
@@ -286,7 +299,8 @@ bool DepthSubscriber::RANSAC(const Plane& in_plane, Plane& final_ground_plane)
 uint8_t DepthSubscriber::evaluateDanger(const sensor_msgs::msg::PointCloud2::SharedPtr& msg, uint32_t total_bytes, Plane& ground_plane, Quaternion sensor_orientation)
 {
     //! Check if it is a danger situation
-    uint32_t num_danger_points = 0;
+    uint32_t num_danger_points = 0, num_points_under_ground = 0;
+
     for(int i = 0; i < total_bytes - 15;) {
         Point pt;
         union Float value_x{}, value_y{}, value_z{};
@@ -316,6 +330,13 @@ uint8_t DepthSubscriber::evaluateDanger(const sensor_msgs::msg::PointCloud2::Sha
             i += 16;
             continue;
         }
+
+        if( (FSensor_orientation == "horizontal" && ground_plane.c < 0) || (FSensor_orientation == "vertical" && ground_plane.a > 0) ) {
+            ground_plane.a = -ground_plane.a;
+            ground_plane.b = -ground_plane.b;
+            ground_plane.c = -ground_plane.c;
+            ground_plane.d = -ground_plane.d;
+        }
         //! Calculate the distance from the point to the plane
         auto norm = std::sqrt(ground_plane.a * ground_plane.a + ground_plane.b * ground_plane.b + ground_plane.c * ground_plane.c);
         if (std::fabs(ground_plane.a * pt.x + ground_plane.b * pt.y + ground_plane.c * pt.z + ground_plane.d) / norm > 60) {
@@ -324,10 +345,15 @@ uint8_t DepthSubscriber::evaluateDanger(const sensor_msgs::msg::PointCloud2::Sha
             if(distance < 740) {
                 num_danger_points++;
             }
+            //printf("%f %f %f %f\n", ground_plane.a/norm, ground_plane.b/norm, ground_plane.c/norm, ground_plane.d/norm);
+
+            if((ground_plane.a * pt.x + ground_plane.b * pt.y + ground_plane.c * pt.z > 60) && pt.y < 1500) {  // Point is below the plane
+                num_points_under_ground++;
+            }
         }
         i += 16;
     }
-    printf("Danger Points: %u\n", num_danger_points);  // TODO: Delete
+    //printf("Danger Points: %u %u\n", num_danger_points, num_points_under_ground);  // TODO: Delete
 
     uint32_t minimum_points1 = (uint32_t)this->get_parameter("evaluate_danger.minimum_points_level1").as_int();
     uint32_t minimum_points2 = (uint32_t)this->get_parameter("evaluate_danger.minimum_points_level2").as_int();
@@ -347,14 +373,25 @@ uint8_t DepthSubscriber::evaluateDanger(const sensor_msgs::msg::PointCloud2::Sha
         else angle -= M_PI;
     }
     if(FSensor_orientation == "vertical" && (std::abs(sensor_orientation.v.z) > std::sin(FSensor_max_inclination) || (angle < FSensor_normal_inclination - FSensor_max_inclination) || (angle > FSensor_normal_inclination + FSensor_max_inclination) ) )
-        return 2;  // Danger
+        return 1;  // Danger
     if(FSensor_orientation == "horizontal" && (std::abs(sensor_orientation.v.x) > std::sin(FSensor_max_inclination) || (angle < FSensor_normal_inclination - FSensor_max_inclination) || (angle > FSensor_normal_inclination + FSensor_max_inclination) ))
-        return 2;  // Danger
-    //! Check if there are any obstacles
+        return 1;  // Danger
+    //! Check if there is a valid ground detection
+    if(ground_plane.points.size() <= 50000) {
+        return 2; // Danger
+    }
+    //! Check if there are any obstacles above ground
     if(num_danger_points >= minimum_points1 && num_danger_points < minimum_points2)
-        return 1;  // Possible danger
+        return 3;  // Possible danger
     else if(num_danger_points >= minimum_points2)
-        return 2;  // Danger Situation
+        return 4;  // Danger Situation
+    //! Check if there is any hole near to the wheelchair
+    if(num_points_under_ground > 25000 && num_points_under_ground < 40000) {
+        return 5;  // Possible danger
+    }
+    else if(num_points_under_ground >= 40000) {
+        return 6;  // Danger Situation
+    }
     return 0;  // Safe situation
 }
 

@@ -10,11 +10,11 @@ depth_subscriber:
   ros__parameters:
     topic_to_subscribe: "/point_cloud"
     max_distance: 740.0
-    sensor_height: 800.0  # MILLIMETERS
-    initial_inclination: 10  # value in degrees
-    max_relative_inclination: 40  # value in degrees
-    orientation: "horizontal"  # horizontal or vertical
+    sensor_height: 500.0  # MILLIMETERS
+    initial_inclination: 20  # value in degrees
+    max_relative_inclination: 30  # value in degrees
+    orientation: "vertical"  # horizontal or vertical
     publish_ground_point_cloud: true
     evaluate_danger:
-      minimum_points_level1: 8000  # Minimum number of points to be considered a situation of possible danger
+      minimum_points_level1: 15000  # Minimum number of points to be considered a situation of possible danger
       minimum_points_level2: 40000  # Minimum number of points to be considered a situation of high danger

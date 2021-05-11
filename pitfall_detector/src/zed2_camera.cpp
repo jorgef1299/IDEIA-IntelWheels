@@ -2,13 +2,13 @@
 
 ZED2_camera::ZED2_camera() : Node("zed2_camera")
 {
-    // Declare node parameters.
+    //! Declare node parameters.
     this->declare_parameter<std::string>("mode", "ULTRA");
     this->declare_parameter<std::string>("unit", "MILLIMETER");
     this->declare_parameter<float>("minimum_distance", 400);
     this->declare_parameter<float>("max_range", 3000);
     this->declare_parameter<std::string>("topic_to_publish", "/point_cloud");
-    // Init all the parameters.
+    //! Init all the parameters.
     init_parameters();
     std::string topic;
     this->get_parameter("topic_to_publish", topic);
@@ -16,13 +16,13 @@ ZED2_camera::ZED2_camera() : Node("zed2_camera")
         std::cout << "ERROR in topic name! Exiting program..." << std::endl;
         exit(EXIT_FAILURE);
     }
-    // Open camera.
+    //! Open camera.
     auto returned_state = FZed.open(FInit_params);
     if(returned_state != sl::ERROR_CODE::SUCCESS){
         std::cout << "ERROR:" << returned_state << ", exiting program..." << std::endl;
         exit(EXIT_FAILURE);
     }
-    // Enable position tracking
+    //! Enable position tracking
     sl::PositionalTrackingParameters tracking_parameters;
     FZed.enablePositionalTracking(tracking_parameters);
 
@@ -38,7 +38,7 @@ void ZED2_camera::getData()
 {
     if(FZed.grab() == sl::ERROR_CODE::SUCCESS) {
         FZed.retrieveMeasure(FPointCloud, sl::MEASURE::XYZRGBA);  // Get Point Cloud
-        // Get pose
+        //! Get pose
         sl::POSITIONAL_TRACKING_STATE state = FZed.getPosition(FZed_pose, sl::REFERENCE_FRAME::WORLD);
     }
     else {
@@ -51,12 +51,12 @@ void ZED2_camera::init_parameters()
 {
     std::string depth_mode, distance_unit;
     float min_distance;
-    // Read parameter values
+    //! Read parameter values
     this->get_parameter("mode", depth_mode);
     this->get_parameter("unit", distance_unit);
     this->get_parameter("minimum_distance", min_distance);
     this->get_parameter("max_range", FMaxRange);
-    // Define depth mode.
+    //! Define depth mode.
     if(depth_mode == "PERFORMANCE"){
         FInit_params.depth_mode = sl::DEPTH_MODE::PERFORMANCE;
     }
@@ -70,7 +70,7 @@ void ZED2_camera::init_parameters()
         std::cout << "Error in depth mode parameter..." << std::endl;
         exit(EXIT_FAILURE);
     }
-    // Define distance unit.
+    //! Define distance unit.
     if(distance_unit == "MILLIMETER"){
         FInit_params.coordinate_units = sl::UNIT::MILLIMETER;
     }
@@ -87,7 +87,7 @@ void ZED2_camera::init_parameters()
         std::cout << "Error in distance unit parameter..." << std::endl;
         exit(EXIT_FAILURE);
     }
-    // Set min and max range.
+    //! Set min and max range.
     if(min_distance <= 0 || min_distance > 5000 || FMaxRange <= min_distance) {
         std::cout << "Error in minimum or maximum distance value parameters..." << std::endl;
         exit(EXIT_FAILURE);
@@ -95,14 +95,14 @@ void ZED2_camera::init_parameters()
     FInit_params.depth_minimum_distance = min_distance;
     FInit_params.depth_maximum_distance = FMaxRange;
 
-    // Set coordinate system
+    //! Set coordinate system
     FInit_params.coordinate_system = sl::COORDINATE_SYSTEM::RIGHT_HANDED_Z_UP;
 }
 
 void ZED2_camera::publishTF()
 {
     static tf2_ros::TransformBroadcaster FPubTF(this);
-    // Get ZED pose
+    //! Get ZED pose
     float tx = FZed_pose.getTranslation().tx;
     float ty = FZed_pose.getTranslation().ty;
     float tz = FZed_pose.getTranslation().tz;
@@ -110,7 +110,7 @@ void ZED2_camera::publishTF()
     float qy = FZed_pose.getOrientation().oy;
     float qz = FZed_pose.getOrientation().oz;
     float qw = FZed_pose.getOrientation().ow;
-    // Create tf Message
+    //! Create tf Message
     geometry_msgs::msg::TransformStamped tf_msg;
     tf_msg.header.frame_id = "map";
     tf_msg.child_frame_id = "depth_sensor";
@@ -121,7 +121,7 @@ void ZED2_camera::publishTF()
     tf_msg.transform.rotation.y = qy;
     tf_msg.transform.rotation.z = qz;
     tf_msg.transform.rotation.w = qw;
-    // Publish tf message
+    //! Publish tf message
     FPubTF.sendTransform(tf_msg);
 }
 
@@ -172,7 +172,7 @@ void ZED2_camera::publishPointCloud() {
             float distance = sqrt(pt.x*pt.x + pt.y*pt.y + pt.z*pt.z);
             if(distance > 0 && distance < FMaxRange) {
                 count++;
-                // Convert float to byte[4]
+                //! Convert float to byte[4]
                 union Float value_x, value_y, value_z, value_rgb;
                 value_x.m_float = pt.x;
                 value_y.m_float = pt.y;
@@ -197,7 +197,7 @@ void ZED2_camera::publishPointCloud() {
     }
     msg.row_step = msg.point_step * count;
     msg.width = count;
-    // Check if there are points to publish
+    //! Check if there are points to publish
     if(count > 0) {
         FPublisher->publish(msg);  // Publish Point Cloud
     }
