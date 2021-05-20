@@ -15,13 +15,13 @@ $ source install/setup.bash
 ## Run package
 ### Set Parameters file
 ```
-$ nano ~/ros2_ws/src/pitfall_detector/config/params.yaml
+$ nano ~/ros2_ws/src/IDEIA-IntelWheels/pitfall_detector/config/params.yaml
 ```
 ### Run ZED 2 Publisher
 ```
-$ ros2 run pitfall_detector zed2_pub --ros-args --params-file ~/ros2_ws/src/pitfall_detector/config/params.yaml
+$ ros2 run pitfall_detector zed2_pub --ros-args --params-file ~/ros2_ws/src/IDEIA-IntelWheels/pitfall_detector/config/params.yaml
 ```
 ### Run Subscriber
 ```
-$ ros2 run pitfall_detector Depth_Subscriber --ros-args --params-file ~/ros2_ws/src/pitfall_detector/config/params.yaml
+$ ros2 run pitfall_detector Depth_Subscriber --ros-args --params-file ~/ros2_ws/src/IDEIA-IntelWheels/pitfall_detector/config/params.yaml
 ```
